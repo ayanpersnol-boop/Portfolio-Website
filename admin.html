@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AM_ // Admin Panel</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=Space+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        :root {
+            --navy: #060810;
+            --navy2: #0c1120;
+            --navy3: #101828;
+            --teal: #00ffe0;
+            --teal2: #00c9b1;
+            --teal3: rgba(0, 255, 224, 0.08);
+            --teal4: rgba(0, 255, 224, 0.18);
+            --gold: #ffd166;
+            --gold2: rgba(255, 209, 102, 0.12);
+            --purple: #7c3aed;
+            --white: #eef2ff;
+            --muted: #6b7a99;
+            --card: #111827;
+            --card2: #1a2236;
+            --font-head: 'Syne', sans-serif;
+            --font-body: 'DM Sans', sans-serif;
+            --font-mono: 'Space Mono', monospace;
+            --glow: 0 0 30px rgba(0, 255, 224, .15);
+        }
+
+        body {
+            background: var(--navy);
+            color: var(--white);
+            font-family: var(--font-body);
+            overflow-x: hidden;
+            min-height: 100vh;
+            cursor: none;
+        }
+
+        /* Noise texture overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 1;
+            opacity: .4
+        }
+
+        /* Custom Cursor */
+        .cursor {
+            position: fixed;
+            width: 8px;
+            height: 8px;
+            background: var(--teal);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            transition: transform .08s;
+            mix-blend-mode: difference;
+            box-shadow: 0 0 10px var(--teal)
+        }
+
+        .cursor-ring {
+            position: fixed;
+            width: 40px;
+            height: 40px;
+            border: 1px solid rgba(0, 255, 224, .5);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9998;
+            transition: all .18s cubic-bezier(.23, 1, .32, 1)
+        }
+
+        .cursor.click {
+            transform: scale(3)
+        }
+
+        .cursor-ring.click {
+            transform: scale(.5);
+            border-color: var(--gold)
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--navy)
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--teal2);
+            border-radius: 2px
+        }
+
+        /* Layout Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* Top Nav */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            margin-bottom: 3rem;
+        }
+
+        .logo {
+            font-family: var(--font-head);
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--teal);
+            letter-spacing: -.03em;
+        }
+
+        .btn-logout {
+            background: transparent;
+            color: var(--muted);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 0.5rem 1.2rem;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            cursor: none;
+            transition: all 0.3s;
+        }
+
+        .btn-logout:hover {
+            color: #ef4444;
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.05);
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.1);
+        }
+
+        /* Auth Panel Styles */
+        .login-wrap {
+            max-width: 400px;
+            margin: 8rem auto 0;
+            background: var(--card);
+            border: 1px solid rgba(0, 255, 224, 0.15);
+            border-radius: 16px;
+            padding: 2.5rem;
+            box-shadow: var(--glow);
+            text-align: center;
+        }
+
+        .login-title {
+            font-family: var(--font-head);
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+
+        .login-subtitle {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--teal);
+            margin-bottom: 2rem;
+            letter-spacing: 0.1em;
+        }
+
+        .form-group {
+            text-align: left;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: var(--teal);
+            letter-spacing: 0.12em;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            background: var(--navy);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 6px;
+            padding: 0.8rem 1rem;
+            color: var(--white);
+            font-family: var(--font-body);
+            font-size: 0.9rem;
+            outline: none;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus {
+            border-color: rgba(0, 255, 224, 0.4);
+            box-shadow: 0 0 0 3px rgba(0, 255, 224, 0.06);
+        }
+
+        .btn-login {
+            width: 100%;
+            background: var(--teal);
+            color: var(--navy);
+            border: none;
+            border-radius: 6px;
+            padding: 1rem;
+            font-family: var(--font-head);
+            font-weight: 800;
+            font-size: 0.95rem;
+            cursor: none;
+            transition: all 0.35s;
+            letter-spacing: 0.02em;
+        }
+
+        .btn-login:hover {
+            background: var(--gold);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(255, 209, 102, 0.2);
+        }
+
+        #loginError {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: #ef4444;
+            margin-top: 1rem;
+            min-height: 1.2rem;
+        }
+
+        /* Dashboard View Styles */
+        .dashboard {
+            display: none;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1.8rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+            border-color: rgba(0, 255, 224, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 2px;
+            height: 100%;
+            background: var(--teal);
+        }
+
+        .stat-card.unread::before {
+            background: var(--gold);
+        }
+
+        .stat-label {
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: var(--muted);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .stat-num {
+            font-family: var(--font-head);
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--white);
+            margin-top: 0.5rem;
+            line-height: 1;
+        }
+
+        .stat-card.unread .stat-num {
+            color: var(--gold);
+        }
+
+        /* Messages Section */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-title {
+            font-family: var(--font-head);
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .section-title span {
+            color: var(--teal);
+        }
+
+        .btn-refresh {
+            background: transparent;
+            color: var(--teal);
+            border: 1px solid rgba(0, 255, 224, 0.3);
+            padding: 0.45rem 1rem;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            cursor: none;
+            transition: all 0.3s;
+        }
+
+        .btn-refresh:hover {
+            background: var(--teal3);
+            box-shadow: 0 0 15px rgba(0, 255, 224, 0.15);
+        }
+
+        /* Messages List */
+        .msg-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .msg-item {
+            background: var(--card);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 1.2rem 1.6rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .msg-item:hover {
+            border-color: rgba(0, 255, 224, 0.12);
+            background: var(--card2);
+        }
+
+        .msg-item.unread {
+            border-left: 3px solid var(--gold);
+        }
+
+        .msg-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            max-width: 70%;
+        }
+
+        .msg-header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+        }
+
+        .msg-sender {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .msg-email {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--muted);
+        }
+
+        .msg-subject {
+            font-size: 0.88rem;
+            color: var(--white);
+            margin-top: 0.1rem;
+        }
+
+        .msg-date {
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: var(--muted);
+        }
+
+        .msg-actions {
+            display: flex;
+            gap: 0.8rem;
+            align-items: center;
+        }
+
+        .btn-icon {
+            background: var(--navy);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--muted);
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: none;
+            transition: all 0.3s;
+            font-size: 0.85rem;
+        }
+
+        .btn-icon:hover {
+            border-color: var(--teal);
+            color: var(--teal);
+        }
+
+        .btn-icon.btn-delete:hover {
+            border-color: #ef4444;
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .btn-view {
+            background: var(--teal3);
+            color: var(--teal);
+            border: 1px solid rgba(0, 255, 224, 0.2);
+            padding: 0.4rem 0.9rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            cursor: none;
+            transition: all 0.3s;
+            letter-spacing: 0.04em;
+        }
+
+        .btn-view:hover {
+            background: var(--teal);
+            color: var(--navy);
+            box-shadow: 0 0 15px rgba(0, 255, 224, 0.25);
+        }
+
+        .badge-unread {
+            background: var(--gold2);
+            border: 1px solid rgba(255, 209, 102, 0.2);
+            color: var(--gold);
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 20px;
+        }
+
+        /* Modal Overlay */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(6, 8, 16, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.open {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal {
+            background: var(--card);
+            border: 1px solid rgba(0, 255, 224, 0.15);
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            padding: 2.2rem;
+            position: relative;
+            box-shadow: var(--glow);
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+
+        .modal-overlay.open .modal {
+            transform: scale(1);
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 1rem;
+            right: 1.2rem;
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 1.2rem;
+            cursor: none;
+            padding: 0.4rem;
+            transition: color 0.3s;
+        }
+
+        .modal-close:hover {
+            color: var(--teal);
+        }
+
+        .modal-sender-info {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-sender-name {
+            font-family: var(--font-head);
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 0.2rem;
+        }
+
+        .modal-sender-meta {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--muted);
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .modal-sender-meta span {
+            color: var(--teal);
+        }
+
+        .modal-body {
+            font-size: 0.95rem;
+            color: #d1d5db;
+            line-height: 1.8;
+            margin-bottom: 2rem;
+            white-space: pre-wrap;
+            background: var(--navy);
+            padding: 1.2rem;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+
+        .btn-reply {
+            background: var(--teal);
+            color: var(--navy);
+            text-decoration: none;
+            padding: 0.6rem 1.4rem;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            font-family: var(--font-head);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: none;
+            transition: all 0.3s;
+        }
+
+        .btn-reply:hover {
+            background: var(--gold);
+            box-shadow: 0 0 20px rgba(255, 209, 102, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .no-messages {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: var(--card);
+            border: 1px dashed rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            color: var(--muted);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="cursor" id="cursor"></div>
+    <div class="cursor-ring" id="cursorRing"></div>
+
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="logo">AM_ // Admin</div>
+            <button class="btn-logout" id="btnLogout" style="display: none;">LOGOUT_</button>
+        </header>
+
+        <!-- LOGIN WINDOW -->
+        <div class="login-wrap" id="loginWrap">
+            <h1 class="login-title">Security Gateway</h1>
+            <div class="login-subtitle">// ACCESS RESTRICTED</div>
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>USER IDENTITY</label>
+                    <input type="text" id="username" placeholder="Username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>PASS-KEY</label>
+                    <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn-login" id="loginBtn">AUTHORIZE_</button>
+            </form>
+            <div id="loginError"></div>
+        </div>
+
+        <!-- MAIN DASHBOARD -->
+        <div class="dashboard" id="dashboardWrap">
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">TOTAL CONVERSATIONS</div>
+                    <div class="stat-num" id="statTotal">0</div>
+                </div>
+                <div class="stat-card unread">
+                    <div class="stat-label">UNREAD TRANSMISSIONS</div>
+                    <div class="stat-num" id="statUnread">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">SYSTEM STATUS</div>
+                    <div class="stat-num" style="color: var(--teal); font-size: 1.6rem; margin-top: 0.8rem; font-family: var(--font-mono);">ONLINE_</div>
+                </div>
+            </div>
+
+            <!-- Messages List -->
+            <div class="section-header">
+                <h2 class="section-title">Inbox <span>Transmissions</span></h2>
+                <button class="btn-refresh" id="btnRefresh">REFRESH_FEED</button>
+            </div>
+
+            <div class="msg-list" id="msgListContainer">
+                <!-- Message items dynamically populated -->
+                <div class="no-messages">CONNECTING TO TRANSMISSION FEED...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DETAIL MODAL -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <button class="modal-close" id="modalClose">✕</button>
+            <div class="modal-sender-info">
+                <div class="modal-sender-name" id="modalName">Name</div>
+                <div class="modal-sender-meta">
+                    <div>EMAIL: <span id="modalEmail">email@domain.com</span></div>
+                    <div>RECEIVED: <span id="modalDate">2026-06-06 00:00:00</span></div>
+                </div>
+            </div>
+            <div style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--teal); margin-bottom: 0.6rem;">SUBJECT: <span id="modalSubject" style="color: var(--white); font-weight: bold;">Subject text</span></div>
+            <div class="modal-body" id="modalBody">
+                Message contents...
+            </div>
+            <div class="modal-actions">
+                <a href="#" class="btn-reply" id="modalReplyBtn">
+                    📧 REPLY VIA MAIL_
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── CURSOR ────────────────────────────────────────
+        const cursor = document.getElementById('cursor');
+        const ring = document.getElementById('cursorRing');
+        let mx = window.innerWidth / 2, my = window.innerHeight / 2, rx = mx, ry = my;
+        document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; cursor.style.left = mx - 4 + 'px'; cursor.style.top = my - 4 + 'px' });
+        document.addEventListener('mousedown', () => { cursor.classList.add('click'); ring.classList.add('click') });
+        document.addEventListener('mouseup', () => { cursor.classList.remove('click'); ring.classList.remove('click') });
+        (function animRing() { rx += (mx - rx - 20) * .13; ry += (my - ry - 20) * .13; ring.style.left = rx + 'px'; ring.style.top = ry + 'px'; requestAnimationFrame(animRing) })();
+        
+        function attachCursorHover(elements) {
+            elements.forEach(el => {
+                el.addEventListener('mouseenter', () => { ring.style.width = '60px'; ring.style.height = '60px'; ring.style.left = rx - 10 + 'px'; ring.style.top = ry - 10 + 'px'; ring.style.borderColor = 'rgba(255,209,102,.6)' });
+                el.addEventListener('mouseleave', () => { ring.style.width = '40px'; ring.style.height = '40px'; ring.style.borderColor = 'rgba(0,255,224,.5)' });
+            });
+        }
+        attachCursorHover(document.querySelectorAll('a,button,input'));
+
+        // ── AUTHENTICATION & LOGIN FLOW ───────────────────
+        const loginWrap = document.getElementById('loginWrap');
+        const dashboardWrap = document.getElementById('dashboardWrap');
+        const btnLogout = document.getElementById('btnLogout');
+        const loginError = document.getElementById('loginError');
+
+        async function checkAuth() {
+            try {
+                const res = await fetch('/api/admin/check-auth');
+                const data = await res.json();
+                if (data.authenticated) {
+                    showDashboard();
+                } else {
+                    showLogin();
+                }
+            } catch (err) {
+                showLogin();
+            }
+        }
+
+        function showDashboard() {
+            loginWrap.style.display = 'none';
+            dashboardWrap.style.display = 'block';
+            btnLogout.style.display = 'block';
+            fetchMessages();
+        }
+
+        function showLogin() {
+            loginWrap.style.display = 'block';
+            dashboardWrap.style.display = 'none';
+            btnLogout.style.display = 'none';
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('loginBtn');
+
+            loginBtn.textContent = 'AUTHORIZING...';
+            loginError.textContent = '';
+
+            try {
+                const res = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showDashboard();
+                } else {
+                    loginError.textContent = 'ACCESS DENIED: ' + (data.message || 'INVALID KEY_');
+                    loginBtn.textContent = 'AUTHORIZE_';
+                }
+            } catch (err) {
+                loginError.textContent = 'SYSTEM ERROR: BACKEND OFFLINE_';
+                loginBtn.textContent = 'AUTHORIZE_';
+            }
+        }
+
+        btnLogout.addEventListener('click', async () => {
+            try {
+                await fetch('/api/admin/logout', { method: 'POST' });
+                showLogin();
+            } catch (err) {
+                showLogin();
+            }
+        });
+
+        // ── MESSAGES MANAGEMENT ───────────────────────────
+        let activeMessages = [];
+        const msgListContainer = document.getElementById('msgListContainer');
+        const statTotal = document.getElementById('statTotal');
+        const statUnread = document.getElementById('statUnread');
+
+        async function fetchMessages() {
+            msgListContainer.innerHTML = '<div class="no-messages">// SCANNING TRANSMISSIONS...</div>';
+            try {
+                const res = await fetch('/api/admin/messages');
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    activeMessages = data.messages;
+                    renderMessages();
+                } else {
+                    msgListContainer.innerHTML = '<div class="no-messages">⚠ FAIL: ' + (data.message || 'UNAUTHORIZED_') + '</div>';
+                }
+            } catch (err) {
+                msgListContainer.innerHTML = '<div class="no-messages">⚠ FAIL: BACKEND CONNECTION ERROR_</div>';
+            }
+        }
+
+        function renderMessages() {
+            if (activeMessages.length === 0) {
+                msgListContainer.innerHTML = '<div class="no-messages">// NO TRANSMISSIONS FOUND IN THE BUFFER_</div>';
+                statTotal.textContent = '0';
+                statUnread.textContent = '0';
+                return;
+            }
+
+            let unreadCount = 0;
+            msgListContainer.innerHTML = '';
+
+            activeMessages.forEach(msg => {
+                const isUnread = msg.read_status === 0;
+                if (isUnread) unreadCount++;
+
+                const msgItem = document.createElement('div');
+                msgItem.className = `msg-item ${isUnread ? 'unread' : ''}`;
+                msgItem.id = `msg-${msg.id}`;
+
+                msgItem.innerHTML = `
+                    <div class="msg-meta">
+                        <div class="msg-header">
+                            <span class="msg-sender">${escapeHTML(msg.name)}</span>
+                            <span class="msg-email">${escapeHTML(msg.email)}</span>
+                            ${isUnread ? '<span class="badge-unread">NEW</span>' : ''}
+                        </div>
+                        <div class="msg-subject">${escapeHTML(msg.subject)}</div>
+                        <div class="msg-date">${msg.timestamp}</div>
+                    </div>
+                    <div class="msg-actions">
+                        <button class="btn-icon btn-read-toggle" onclick="toggleReadStatus(${msg.id}, ${msg.read_status})" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
+                            ${isUnread ? '✓' : '✉'}
+                        </button>
+                        <button class="btn-icon btn-delete" onclick="deleteMessage(${msg.id})" title="Delete Message">
+                            🗑
+                        </button>
+                        <button class="btn-view" onclick="viewMessageDetails(${msg.id})">VIEW_</button>
+                    </div>
+                `;
+
+                msgListContainer.appendChild(msgItem);
+            });
+
+            statTotal.textContent = activeMessages.length;
+            statUnread.textContent = unreadCount;
+            attachCursorHover(document.querySelectorAll('.msg-actions button, .msg-actions a'));
+        }
+
+        async function toggleReadStatus(id, currentStatus) {
+            const newStatus = currentStatus === 0 ? 1 : 0;
+            try {
+                const res = await fetch(`/api/admin/messages/${id}/read`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ read: newStatus })
+                });
+                if (res.ok) {
+                    // Update locally and re-render
+                    const msg = activeMessages.find(m => m.id === id);
+                    if (msg) {
+                        msg.read_status = newStatus;
+                        renderMessages();
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to update status', err);
+            }
+        }
+
+        async function deleteMessage(id) {
+            if (!confirm('Are you sure you want to permanently delete this message?')) return;
+            try {
+                const res = await fetch(`/api/admin/messages/${id}`, {
+                    method: 'DELETE'
+                });
+                if (res.ok) {
+                    activeMessages = activeMessages.filter(m => m.id !== id);
+                    renderMessages();
+                }
+            } catch (err) {
+                console.error('Failed to delete message', err);
+            }
+        }
+
+        // ── MODAL MANAGEMENT ──────────────────────────────
+        const modalOverlay = document.getElementById('modalOverlay');
+        const modalClose = document.getElementById('modalClose');
+
+        function viewMessageDetails(id) {
+            const msg = activeMessages.find(m => m.id === id);
+            if (!msg) return;
+
+            document.getElementById('modalName').textContent = msg.name;
+            document.getElementById('modalEmail').textContent = msg.email;
+            document.getElementById('modalDate').textContent = msg.timestamp;
+            document.getElementById('modalSubject').textContent = msg.subject;
+            document.getElementById('modalBody').textContent = msg.message;
+
+            const replyBtn = document.getElementById('modalReplyBtn');
+            replyBtn.href = `mailto:${msg.email}?subject=Re: ${encodeURIComponent(msg.subject)}`;
+
+            // Auto-mark as read if unread
+            if (msg.read_status === 0) {
+                toggleReadStatus(id, 0);
+            }
+
+            modalOverlay.classList.add('open');
+            attachCursorHover([modalClose, replyBtn]);
+        }
+
+        modalClose.addEventListener('click', () => {
+            modalOverlay.classList.remove('open');
+        });
+
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                modalOverlay.classList.remove('open');
+            }
+        });
+
+        document.getElementById('btnRefresh').addEventListener('click', fetchMessages);
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            );
+        }
+
+        // Initialize Authentication Check
+        checkAuth();
+    </script>
+</body>
+
+</html>
