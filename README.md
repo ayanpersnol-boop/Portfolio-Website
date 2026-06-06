@@ -1,2 +1,6 @@
-# Portfolio-Website
-I have make a 3-D Portfolio Website by vibe coding. During this I have learnt how to use multiple agent for different works, Hosting a website, how to push code to git hub, using git hub for hosting, and managing the database
+# Sansio
+
+This folder contains code that can be used by alternative Flask
+implementations, for example Quart. The code therefore cannot do any
+IO, nor be part of a likely IO path. Finally this code cannot use the
+Flask globals.
