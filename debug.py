@@ -1,191 +1,203 @@
+from __future__ import annotations
+
+import locale
+import logging
+import os
 import sys
-import typing as t
-from types import CodeType
-from types import TracebackType
+from optparse import Values
+from types import ModuleType
+from typing import Any
 
-from .exceptions import TemplateSyntaxError
-from .utils import internal_code
-from .utils import missing
+import pip._vendor
+from pip._vendor.certifi import where
+from pip._vendor.packaging.version import parse as parse_version
 
-if t.TYPE_CHECKING:
-    from .runtime import Context
+from pip._internal.cli import cmdoptions
+from pip._internal.cli.base_command import Command
+from pip._internal.cli.cmdoptions import make_target_python
+from pip._internal.cli.status_codes import SUCCESS
+from pip._internal.configuration import Configuration
+from pip._internal.metadata import get_environment
+from pip._internal.utils.compat import open_text_resource
+from pip._internal.utils.logging import indent_log
+from pip._internal.utils.misc import get_pip_version
 
-
-def rewrite_traceback_stack(source: t.Optional[str] = None) -> BaseException:
-    """Rewrite the current exception to replace any tracebacks from
-    within compiled template code with tracebacks that look like they
-    came from the template source.
-
-    This must be called within an ``except`` block.
-
-    :param source: For ``TemplateSyntaxError``, the original source if
-        known.
-    :return: The original exception with the rewritten traceback.
-    """
-    _, exc_value, tb = sys.exc_info()
-    exc_value = t.cast(BaseException, exc_value)
-    tb = t.cast(TracebackType, tb)
-
-    if isinstance(exc_value, TemplateSyntaxError) and not exc_value.translated:
-        exc_value.translated = True
-        exc_value.source = source
-        # Remove the old traceback, otherwise the frames from the
-        # compiler still show up.
-        exc_value.with_traceback(None)
-        # Outside of runtime, so the frame isn't executing template
-        # code, but it still needs to point at the template.
-        tb = fake_traceback(
-            exc_value, None, exc_value.filename or "<unknown>", exc_value.lineno
-        )
-    else:
-        # Skip the frame for the render function.
-        tb = tb.tb_next
-
-    stack = []
-
-    # Build the stack of traceback object, replacing any in template
-    # code with the source file and line information.
-    while tb is not None:
-        # Skip frames decorated with @internalcode. These are internal
-        # calls that aren't useful in template debugging output.
-        if tb.tb_frame.f_code in internal_code:
-            tb = tb.tb_next
-            continue
-
-        template = tb.tb_frame.f_globals.get("__jinja_template__")
-
-        if template is not None:
-            lineno = template.get_corresponding_lineno(tb.tb_lineno)
-            fake_tb = fake_traceback(exc_value, tb, template.filename, lineno)
-            stack.append(fake_tb)
-        else:
-            stack.append(tb)
-
-        tb = tb.tb_next
-
-    tb_next = None
-
-    # Assign tb_next in reverse to avoid circular references.
-    for tb in reversed(stack):
-        tb.tb_next = tb_next
-        tb_next = tb
-
-    return exc_value.with_traceback(tb_next)
+logger = logging.getLogger(__name__)
 
 
-def fake_traceback(  # type: ignore
-    exc_value: BaseException, tb: t.Optional[TracebackType], filename: str, lineno: int
-) -> TracebackType:
-    """Produce a new traceback object that looks like it came from the
-    template source instead of the compiled code. The filename, line
-    number, and location name will point to the template, and the local
-    variables will be the current template context.
+def show_value(name: str, value: Any) -> None:
+    logger.info("%s: %s", name, value)
 
-    :param exc_value: The original exception to be re-raised to create
-        the new traceback.
-    :param tb: The original traceback to get the local variables and
-        code info from.
-    :param filename: The template filename.
-    :param lineno: The line number in the template source.
-    """
-    if tb is not None:
-        # Replace the real locals with the context that would be
-        # available at that point in the template.
-        locals = get_template_locals(tb.tb_frame.f_locals)
-        locals.pop("__jinja_exception__", None)
-    else:
-        locals = {}
 
-    globals = {
-        "__name__": filename,
-        "__file__": filename,
-        "__jinja_exception__": exc_value,
-    }
-    # Raise an exception at the correct line number.
-    code: CodeType = compile(
-        "\n" * (lineno - 1) + "raise __jinja_exception__", filename, "exec"
-    )
+def show_sys_implementation() -> None:
+    logger.info("sys.implementation:")
+    implementation_name = sys.implementation.name
+    with indent_log():
+        show_value("name", implementation_name)
 
-    # Build a new code object that points to the template file and
-    # replaces the location with a block name.
-    location = "template"
 
-    if tb is not None:
-        function = tb.tb_frame.f_code.co_name
+def create_vendor_txt_map() -> dict[str, str]:
+    with open_text_resource("pip._vendor", "vendor.txt") as f:
+        # Purge non version specifying lines.
+        # Also, remove any space prefix or suffixes (including comments).
+        lines = [
+            line.strip().split(" ", 1)[0] for line in f.readlines() if "==" in line
+        ]
 
-        if function == "root":
-            location = "top-level template code"
-        elif function.startswith("block_"):
-            location = f"block {function[6:]!r}"
+    # Transform into "module" -> version dict.
+    return dict(line.split("==", 1) for line in lines)
 
-    if sys.version_info >= (3, 8):
-        code = code.replace(co_name=location)
-    else:
-        code = CodeType(
-            code.co_argcount,
-            code.co_kwonlyargcount,
-            code.co_nlocals,
-            code.co_stacksize,
-            code.co_flags,
-            code.co_code,
-            code.co_consts,
-            code.co_names,
-            code.co_varnames,
-            code.co_filename,
-            location,
-            code.co_firstlineno,
-            code.co_lnotab,
-            code.co_freevars,
-            code.co_cellvars,
-        )
 
-    # Execute the new code, which is guaranteed to raise, and return
-    # the new traceback without this frame.
+def get_module_from_module_name(module_name: str) -> ModuleType | None:
+    # Module name can be uppercase in vendor.txt for some reason...
+    module_name = module_name.lower().replace("-", "_")
+    # PATCH: setuptools is actually only pkg_resources.
+    if module_name == "setuptools":
+        module_name = "pkg_resources"
+
     try:
-        exec(code, globals, locals)
-    except BaseException:
-        return sys.exc_info()[2].tb_next  # type: ignore
+        __import__(f"pip._vendor.{module_name}", globals(), locals(), level=0)
+        return getattr(pip._vendor, module_name)
+    except ImportError:
+        # We allow 'truststore' to fail to import due
+        # to being unavailable on Python 3.9 and earlier.
+        if module_name == "truststore" and sys.version_info < (3, 10):
+            return None
+        raise
 
 
-def get_template_locals(real_locals: t.Mapping[str, t.Any]) -> t.Dict[str, t.Any]:
-    """Based on the runtime locals, get the context that would be
-    available at that point in the template.
+def get_vendor_version_from_module(module_name: str) -> str | None:
+    module = get_module_from_module_name(module_name)
+    version = getattr(module, "__version__", None)
+
+    if module and not version:
+        # Try to find version in debundled module info.
+        assert module.__file__ is not None
+        env = get_environment([os.path.dirname(module.__file__)])
+        dist = env.get_distribution(module_name)
+        if dist:
+            version = str(dist.version)
+
+    return version
+
+
+def show_actual_vendor_versions(vendor_txt_versions: dict[str, str]) -> None:
+    """Log the actual version and print extra info if there is
+    a conflict or if the actual version could not be imported.
     """
-    # Start with the current template context.
-    ctx: t.Optional[Context] = real_locals.get("context")
+    for module_name, expected_version in vendor_txt_versions.items():
+        extra_message = ""
+        actual_version = get_vendor_version_from_module(module_name)
+        if not actual_version:
+            extra_message = (
+                " (Unable to locate actual module version, using"
+                " vendor.txt specified version)"
+            )
+            actual_version = expected_version
+        elif parse_version(actual_version) != parse_version(expected_version):
+            extra_message = (
+                " (CONFLICT: vendor.txt suggests version should"
+                f" be {expected_version})"
+            )
+        logger.info("%s==%s%s", module_name, actual_version, extra_message)
 
-    if ctx is not None:
-        data: t.Dict[str, t.Any] = ctx.get_all().copy()
+
+def show_vendor_versions() -> None:
+    logger.info("vendored library versions:")
+
+    vendor_txt_versions = create_vendor_txt_map()
+    with indent_log():
+        show_actual_vendor_versions(vendor_txt_versions)
+
+
+def show_tags(options: Values) -> None:
+    tag_limit = 10
+
+    target_python = make_target_python(options)
+    tags = target_python.get_sorted_tags()
+
+    # Display the target options that were explicitly provided.
+    formatted_target = target_python.format_given()
+    suffix = ""
+    if formatted_target:
+        suffix = f" (target: {formatted_target})"
+
+    msg = f"Compatible tags: {len(tags)}{suffix}"
+    logger.info(msg)
+
+    if options.verbose < 1 and len(tags) > tag_limit:
+        tags_limited = True
+        tags = tags[:tag_limit]
     else:
-        data = {}
+        tags_limited = False
 
-    # Might be in a derived context that only sets local variables
-    # rather than pushing a context. Local variables follow the scheme
-    # l_depth_name. Find the highest-depth local that has a value for
-    # each name.
-    local_overrides: t.Dict[str, t.Tuple[int, t.Any]] = {}
+    with indent_log():
+        for tag in tags:
+            logger.info(str(tag))
 
-    for name, value in real_locals.items():
-        if not name.startswith("l_") or value is missing:
-            # Not a template variable, or no longer relevant.
-            continue
+        if tags_limited:
+            msg = f"...\n[First {tag_limit} tags shown. Pass --verbose to show all.]"
+            logger.info(msg)
 
-        try:
-            _, depth_str, name = name.split("_", 2)
-            depth = int(depth_str)
-        except ValueError:
-            continue
 
-        cur_depth = local_overrides.get(name, (-1,))[0]
+def ca_bundle_info(config: Configuration) -> str:
+    levels = {key.split(".", 1)[0] for key, _ in config.items()}
+    if not levels:
+        return "Not specified"
 
-        if cur_depth < depth:
-            local_overrides[name] = (depth, value)
+    levels_that_override_global = ["install", "wheel", "download"]
+    global_overriding_level = [
+        level for level in levels if level in levels_that_override_global
+    ]
+    if not global_overriding_level:
+        return "global"
 
-    # Modify the context with any derived context.
-    for name, (_, value) in local_overrides.items():
-        if value is missing:
-            data.pop(name, None)
-        else:
-            data[name] = value
+    if "global" in levels:
+        levels.remove("global")
+    return ", ".join(levels)
 
-    return data
+
+class DebugCommand(Command):
+    """
+    Display debug information.
+    """
+
+    usage = """
+      %prog <options>"""
+    ignore_require_venv = True
+
+    def add_options(self) -> None:
+        cmdoptions.add_target_python_options(self.cmd_opts)
+        self.parser.insert_option_group(0, self.cmd_opts)
+        self.parser.config.load()
+
+    def run(self, options: Values, args: list[str]) -> int:
+        logger.warning(
+            "This command is only meant for debugging. "
+            "Do not use this with automation for parsing and getting these "
+            "details, since the output and options of this command may "
+            "change without notice."
+        )
+        show_value("pip version", get_pip_version())
+        show_value("sys.version", sys.version)
+        show_value("sys.executable", sys.executable)
+        show_value("sys.getdefaultencoding", sys.getdefaultencoding())
+        show_value("sys.getfilesystemencoding", sys.getfilesystemencoding())
+        show_value(
+            "locale.getpreferredencoding",
+            locale.getpreferredencoding(),
+        )
+        show_value("sys.platform", sys.platform)
+        show_sys_implementation()
+
+        show_value("'cert' config value", ca_bundle_info(self.parser.config))
+        show_value("REQUESTS_CA_BUNDLE", os.environ.get("REQUESTS_CA_BUNDLE"))
+        show_value("CURL_CA_BUNDLE", os.environ.get("CURL_CA_BUNDLE"))
+        show_value("pip._vendor.certifi.where()", where())
+        show_value("pip._vendor.DEBUNDLED", pip._vendor.DEBUNDLED)
+
+        show_vendor_versions()
+
+        show_tags(options)
+
+        return SUCCESS
